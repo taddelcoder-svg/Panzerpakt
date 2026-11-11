@@ -134,12 +134,12 @@ dialog.rueck h2 { margin-bottom: 8px; color: var(--gold); }
     <details class="regeln">
       <summary>So läuft die Schlacht</summary>
       <ul>
-        <li>Eine Schlacht dauert <b>Wochen</b>: <b>Jeden Tag</b> zur gleichen Uhrzeit bekommt jeder Panzer <b>1 Aktionspunkt</b>. AP kannst du ansparen – schau rein, wann du willst.</li>
+        <li>Jeden <b>Takt</b> bekommt jeder Panzer <b>1 Aktionspunkt</b>. Der Gastgeber wählt das Tempo: von der <b>Blitz-Schlacht</b> (jede Minute) bis zur <b>Wochen-Schlacht</b> (einmal am Tag zur festen Uhrzeit). AP kannst du ansparen.</li>
         <li><b>Fahren</b> 1 AP (Berg 2 AP) · <b>Schießen</b> 1 AP (1 Schaden) · <b>Aufrüsten</b> 2 AP (+1 Reichweite) · <b>AP schenken</b> an Panzer in Reichweite.</li>
         <li><b>Gelände:</b> Auf Bergen +1 Reichweite. Im Wald kann man dich nur aus 2 Feldern treffen. Flüsse nur an Furten überqueren.</li>
         <li><b>Wer einen Panzer zerstört, plündert seine AP.</b></li>
-        <li><b>Der Sturm</b> zieht sich ab der zweiten Woche zusammen. Wer draußen steht, verliert jeden Takt ein Herz.</li>
-        <li><b>Der Titan</b> erwacht an Tag 5 in der Mitte und speit Feuer. Wer ihn erlegt, bekommt +3 AP und 2 Rüstung.</li>
+        <li><b>Der Sturm</b> zieht sich ab dem 7. Takt zusammen. Wer draußen steht, verliert jeden Takt ein Herz.</li>
+        <li><b>Der Titan</b> erwacht im 5. Takt in der Mitte und speit Feuer. Wer ihn erlegt, bekommt +3 AP und 2 Rüstung.</li>
         <li><b>Pakte:</b> Schließt Blutpakte. Wer auf einen Paktbruder schießt, wird vor allen als Verräter gebrandmarkt.</li>
         <li><b>Geisterrat:</b> Zerstörte Panzer stimmen jeden Takt ab: Segen (+1 AP) oder Fluch (−1 AP) für einen Lebenden.</li>
         <li>Ereignisse wie <b>Blutmond</b> (doppelter Schaden), <b>Nebel</b>, <b>Luftbrücke</b> und <b>Erdbeben</b> würfeln jede Runde neu.</li>
@@ -160,7 +160,7 @@ dialog.rueck h2 { margin-bottom: 8px; color: var(--gold); }
   <div class="kasten" id="hostBox">
     <div class="feld"><label for="taktWahl">Takt (wie oft gibt es AP?)</label><select id="taktWahl"></select></div>
     <div class="feld" id="uhrFeld"><label for="uhrWahl">Uhrzeit des Tageswechsels</label><select id="uhrWahl"></select></div>
-    <p class="leise" style="font-size:13px;margin:0 0 10px">Eine Schlacht dauert bei einem Takt pro Tag etwa drei Wochen: Die erste Woche bleibt der Sturm ruhig, an Tag 5 erwacht der Titan.</p>
+    <p class="leise" style="font-size:13px;margin:0 0 10px" id="dauerText"></p>
     <div class="reihe"><button id="btnBot">+ Bot-Panzer</button><button class="haupt" id="btnStart">⚔️ Schlacht beginnen</button></div>
   </div>
   <p class="leise" id="wartet">Warte auf den Gastgeber …</p>
@@ -304,6 +304,10 @@ function lobbyZeigen() {
   $('#hostBox').classList.toggle('versteckt', !host); $('#wartet').classList.toggle('versteckt', host);
   $('#taktWahl').innerHTML = Object.entries(INFO.takte).sort((a, b) => b[0] - a[0]).map(([m, t]) => `<option value="${m}" ${+m === s.taktMin ? 'selected' : ''}>${t}</option>`).join('');
   $('#uhrFeld').classList.toggle('versteckt', s.taktMin < 720);
+  // Eine Schlacht dauert etwa 25 Takte: Titan in Takt 5, Sturm ab Takt 7, Kern um Takt 24
+  const fmt = (m, dat) => { const r = x => String(Math.round(x * 2) / 2).replace('.5', '½');
+    return m < 120 ? `${m} Minuten` : m < 2880 ? `${r(m / 60)} Stunden` : m < 20160 ? `${r(m / 1440)} Tage${dat ? 'n' : ''}` : `${r(m / 10080)} Wochen`; };
+  $('#dauerText').textContent = `⏱️ Dauer etwa ${fmt(s.taktMin * 25)} · Titan nach ${fmt(s.taktMin * 5, 1)} · Sturm ab ${fmt(s.taktMin * 7, 1)}`;
   $('#uhrWahl').innerHTML = [...Array(24)].map((_, h) => `<option value="${h}" ${h === s.uhrzeit ? 'selected' : ''}>${h}:00 Uhr${s.taktMin === 720 ? ` und ${(h + 12) % 24}:00 Uhr` : ''}</option>`).join('');
 }
 async function lobbyAendern(d) { try { neuerStand(await post('lobby', d)); } catch (e) { $('#lobbyFehler').textContent = e.message; } }
@@ -412,7 +416,7 @@ function seiteZeigen(erzwingen) {
   }
   if (tab === 'rat') {
     const ich = ICH(), geister = stand.spieler.filter(p => !p.lebt);
-    if (ich.lebt) { box.innerHTML = `<div class="geisterrat"><p>Die Gefallenen beobachten dich. Jeden Tag segnen (+1 AP) oder verfluchen (−1 AP) sie einen Lebenden mit Mehrheit.</p>
+    if (ich.lebt) { box.innerHTML = `<div class="geisterrat"><p>Die Gefallenen beobachten dich. Jeden Takt segnen (+1 AP) oder verfluchen (−1 AP) sie einen Lebenden mit Mehrheit.</p>
       <p class="leise">Im Rat: ${geister.length ? geister.map(g => esc(g.name)).join(', ') : 'noch niemand'}</p><p class="leise">Tipp: Sei nett zu den Geistern im Funk.</p></div>`; return; }
     const lebende = stand.spieler.filter(p => p.lebt), st = stand.ich.stimme;
     box.innerHTML = `<div class="geisterrat"><p>👻 Du bist gefallen, aber nicht vergessen. Wähle für diesen Takt <b>einen</b> Lebenden:</p>
