@@ -34,7 +34,25 @@ const KLASSEN = {
 };
 const FARBEN = ['#e8483f', '#3fa7e8', '#f2c230', '#5ad16a', '#b46cf0', '#f08a3c', '#3fe0c8', '#f06cb4',
   '#9aa6b2', '#c9e84a', '#6c7bf0', '#e8e8e8'];
-const TAKTE = { 1: 'Jede Minute', 5: 'Alle 5 Minuten', 30: 'Alle 30 Minuten', 60: 'Jede Stunde', 1440: 'Einmal am Tag' };
+// Panzerpakt ist auf lange Schlachten über Tage und Wochen ausgelegt. Die kurzen Takte sind nur zum Ausprobieren.
+const TAKTE = { 1440: 'Einmal am Tag (empfohlen)', 720: 'Zweimal am Tag', 360: 'Alle 6 Stunden', 60: 'Jede Stunde', 5: 'Alle 5 Minuten (Probespiel)' };
+const STANDARD_TAKT = 1440, STANDARD_UHRZEIT = 18;
+
+/* Nächster Zeitpunkt, an dem in Deutschland die volle Stunde `stunde` schlägt (beachtet Sommer- und Winterzeit). */
+const BERLIN = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', hour: 'numeric', hourCycle: 'h23' });
+function naechsteUhrzeit(stunde, ab) {
+  let t = Math.ceil((ab + 1000) / 3600000) * 3600000;
+  for (let i = 0; i < 30; i++, t += 3600000) if (Number(BERLIN.formatToParts(t).find(p => p.type === 'hour').value) === stunde) return t;
+  return ab + 864e5;
+}
+/* Wann ist der nächste Takt? Tägliche (und halbtägliche) Takte schlagen zu einer festen Uhrzeit. */
+function taktPlanen(g, ab) {
+  if (!process.env.SCHNELLTEST && (g.taktMin === 1440 || g.taktMin === 720)) {
+    const u = g.uhrzeit ?? STANDARD_UHRZEIT, t1 = naechsteUhrzeit(u, ab);
+    return g.taktMin === 720 ? Math.min(t1, naechsteUhrzeit((u + 12) % 24, ab)) : t1;
+  }
+  return ab + g.taktMin * MINUTE;
+}
 const BOT_NAMEN = ['Eisenzahn', 'Rostkönig', 'Graf Granate', 'Kettenkarl', 'Frau Haubitze', 'Stahlmaus',
   'Donnerdora', 'Kaputtnik', 'Major Matsch', 'Zahnrad-Zoe', 'Bolzen-Bernd'];
 
@@ -323,7 +341,6 @@ const EREIGNISSE = [
 
 function takt(g) {
   g.takt++;
-  g.naechsterTakt = Date.now() + g.taktMin * MINUTE;
   // Tarnung und Ereignis laufen ab
   for (const s of g.spieler) s.getarnt = false;
   g.ereignis = null;
@@ -343,7 +360,7 @@ function takt(g) {
   for (const s of g.spieler) if (s.lebt) s.ap++;
 
   // Sturm
-  if (g.takt % g.sturmTakte === 0 && g.sturmRadius > 1) {
+  if (g.takt >= g.sturmStart && (g.takt - g.sturmStart) % g.sturmTakte === 0 && g.sturmRadius > 1) {
     g.sturmRadius--;
     log(g, `🌪️ Der Sturm zieht sich zusammen! Die sichere Zone schrumpft.`, 'sturm');
   }
@@ -438,7 +455,7 @@ function botZug(g, s) {
 function ansicht(g, ich) {
   const lebt = ich && ich.lebt;
   return {
-    code: g.code, status: g.status, groesse: g.groesse, karte: g.karte, takt: g.takt, taktMin: g.taktMin,
+    code: g.code, status: g.status, groesse: g.groesse, karte: g.karte, takt: g.takt, taktMin: g.taktMin, uhrzeit: g.uhrzeit ?? STANDARD_UHRZEIT, sturmStart: g.sturmStart,
     naechsterTakt: g.naechsterTakt, sturmRadius: g.sturmRadius, sturmTakte: g.sturmTakte, ereignis: g.ereignis,
     titanTakt: g.titanTakt, titan: g.titan, kisten: g.kisten, host: g.host, sieger: g.sieger, jetzt: Date.now(),
     pakte: g.pakte, angebote: g.angebote.filter(a => ich && (a.an === ich.id || a.von === ich.id)),
@@ -471,8 +488,8 @@ function api(req, res, pfad, b) {
     if (Object.keys(partien).length > 300) return senden(res, 503, { fehler: 'Gerade zu viele Partien.' });
     const name = sauber(b.name); if (name.length < 2) return senden(res, 400, { fehler: 'Name zu kurz.' });
     const code = neuerCode();
-    const taktMin = TAKTE[b.taktMin] ? Number(b.taktMin) : 5;
-    const g = { code, status: 'lobby', erstellt: Date.now(), zuletzt: Date.now(), taktMin, spieler: [], pakte: [], angebote: [],
+    const taktMin = TAKTE[b.taktMin] ? Number(b.taktMin) : STANDARD_TAKT;
+    const g = { code, status: 'lobby', erstellt: Date.now(), zuletzt: Date.now(), taktMin, uhrzeit: STANDARD_UHRZEIT, spieler: [], pakte: [], angebote: [],
       chat: [], chronik: [], logNr: 0, takt: 0, kisten: [], titan: null, ereignis: null, host: null, sieger: null };
     const s = neuerSpieler(g, name, b.klasse);
     g.host = s.id;
@@ -504,6 +521,7 @@ function api(req, res, pfad, b) {
     if (b.klasse && KLASSEN[b.klasse]) { ich.klasse = b.klasse; ich.herzen = KLASSEN[b.klasse].herzen; ich.reichweite = KLASSEN[b.klasse].reichweite; }
     if (b.farbe && FARBEN.includes(b.farbe) && !g.spieler.some(s => s !== ich && s.farbe === b.farbe)) ich.farbe = b.farbe;
     if (ich.id === g.host && TAKTE[b.taktMin]) g.taktMin = Number(b.taktMin);
+    if (ich.id === g.host && b.uhrzeit !== undefined && Number(b.uhrzeit) >= 0 && Number(b.uhrzeit) <= 23) g.uhrzeit = Math.floor(Number(b.uhrzeit));
     if (ich.id === g.host && b.botDazu && g.spieler.length < 12) {
       const frei = BOT_NAMEN.filter(n => !g.spieler.some(s => s.name === n));
       const k = Object.keys(KLASSEN);
@@ -524,13 +542,17 @@ function api(req, res, pfad, b) {
     if (g.groesse % 2 === 0) g.groesse++;
     karteBauen(g);
     g.sturmRadius = Math.floor(g.groesse / 2);
-    g.sturmTakte = Math.max(3, Math.round(16 / Math.max(1, g.sturmRadius - 1)) + 2);
-    g.titanTakt = 6;
+    // Tempo für eine Schlacht von gut drei Wochen bei einem Takt pro Tag:
+    // Der Sturm bleibt die erste Woche ruhig und zieht sich dann bis etwa Tag 24 bis auf einen kleinen Kern zusammen.
+    g.sturmStart = 7;
+    g.sturmTakte = Math.max(1, Math.round(17 / Math.max(1, g.sturmRadius - 2)));
+    g.titanTakt = 5;
     g.status = 'laeuft';
     for (const s of g.spieler) { const f = freiesFeld(g, true); s.x = f.x; s.y = f.y; s.ap = 1; }
     for (let i = 0; i < 3; i++) kisteAbwerfen(g);
-    g.naechsterTakt = Date.now() + g.taktMin * MINUTE;
-    log(g, `⚔️ DIE SCHLACHT BEGINNT! ${g.spieler.length} Panzer, ${TAKTE[g.taktMin].toLowerCase()} gibt es 1 AP. Nur einer kehrt heim.`, 'start');
+    g.naechsterTakt = taktPlanen(g, Date.now());
+    const wann = g.taktMin === 1440 ? `jeden Tag um ${g.uhrzeit} Uhr` : g.taktMin === 720 ? `jeden Tag um ${g.uhrzeit} und ${(g.uhrzeit + 12) % 24} Uhr` : TAKTE[g.taktMin].replace(/ \(.*\)/, '').toLowerCase();
+    log(g, `⚔️ DIE SCHLACHT BEGINNT! ${g.spieler.length} Panzer, ${wann} gibt es 1 AP. Nur einer kehrt heim.`, 'start');
     return senden(res, 200, ansicht(g, ich));
   }
 
@@ -581,8 +603,8 @@ setInterval(() => {
   for (const [code, g] of Object.entries(partien)) {
     if (g.status === 'laeuft') {
       let n = 0;
-      while (g.status === 'laeuft' && jetzt >= g.naechsterTakt && n++ < 50) { const soll = g.naechsterTakt; takt(g); g.naechsterTakt = soll + g.taktMin * MINUTE; }
-      if (g.naechsterTakt < jetzt) g.naechsterTakt = jetzt + g.taktMin * MINUTE;
+      while (g.status === 'laeuft' && jetzt >= g.naechsterTakt && n++ < 50) { const soll = g.naechsterTakt; takt(g); g.naechsterTakt = taktPlanen(g, soll); }
+      if (g.naechsterTakt < jetzt) g.naechsterTakt = taktPlanen(g, jetzt);
     }
     // Aufräumen: Lobbys nach 2 Tagen, beendete nach 7 Tagen, ohne Besuch nach 30 Tagen
     const alt = jetzt - g.zuletzt;

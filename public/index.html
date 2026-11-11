@@ -98,6 +98,9 @@ h1, h2, h3 { margin: 0; }
 .chateingabe { display: flex; gap: 6px; margin-top: 8px; }
 .chateingabe select { width: 110px; flex: none; }
 .geisterrat p { font-size: 14px; }
+dialog.rueck { background: var(--panel); color: var(--text); border: 1px solid var(--rand); border-radius: 18px; padding: 20px; width: min(520px, calc(100% - 32px)); max-height: 80vh; overflow-y: auto; }
+dialog.rueck::backdrop { background: rgba(0,0,0,.7); backdrop-filter: blur(3px); }
+dialog.rueck h2 { margin-bottom: 8px; color: var(--gold); }
 .kasten { background: var(--panel2); border: 1px solid var(--rand); border-radius: 12px; padding: 10px; margin-bottom: 10px; font-size: 14px; }
 
 @media (max-width: 820px) {
@@ -131,12 +134,12 @@ h1, h2, h3 { margin: 0; }
     <details class="regeln">
       <summary>So läuft die Schlacht</summary>
       <ul>
-        <li><b>Pro Takt</b> (z. B. jede Stunde) bekommt jeder Panzer <b>1 Aktionspunkt</b>. AP kannst du ansparen.</li>
+        <li>Eine Schlacht dauert <b>Wochen</b>: <b>Jeden Tag</b> zur gleichen Uhrzeit bekommt jeder Panzer <b>1 Aktionspunkt</b>. AP kannst du ansparen – schau rein, wann du willst.</li>
         <li><b>Fahren</b> 1 AP (Berg 2 AP) · <b>Schießen</b> 1 AP (1 Schaden) · <b>Aufrüsten</b> 2 AP (+1 Reichweite) · <b>AP schenken</b> an Panzer in Reichweite.</li>
         <li><b>Gelände:</b> Auf Bergen +1 Reichweite. Im Wald kann man dich nur aus 2 Feldern treffen. Flüsse nur an Furten überqueren.</li>
         <li><b>Wer einen Panzer zerstört, plündert seine AP.</b></li>
-        <li><b>Der Sturm</b> zieht sich zusammen. Wer draußen steht, verliert jeden Takt ein Herz.</li>
-        <li><b>Der Titan</b> erwacht in Takt 6 in der Mitte und speit Feuer. Wer ihn erlegt, bekommt +3 AP und 2 Rüstung.</li>
+        <li><b>Der Sturm</b> zieht sich ab der zweiten Woche zusammen. Wer draußen steht, verliert jeden Takt ein Herz.</li>
+        <li><b>Der Titan</b> erwacht an Tag 5 in der Mitte und speit Feuer. Wer ihn erlegt, bekommt +3 AP und 2 Rüstung.</li>
         <li><b>Pakte:</b> Schließt Blutpakte. Wer auf einen Paktbruder schießt, wird vor allen als Verräter gebrandmarkt.</li>
         <li><b>Geisterrat:</b> Zerstörte Panzer stimmen jeden Takt ab: Segen (+1 AP) oder Fluch (−1 AP) für einen Lebenden.</li>
         <li>Ereignisse wie <b>Blutmond</b> (doppelter Schaden), <b>Nebel</b>, <b>Luftbrücke</b> und <b>Erdbeben</b> würfeln jede Runde neu.</li>
@@ -156,6 +159,8 @@ h1, h2, h3 { margin: 0; }
   </div>
   <div class="kasten" id="hostBox">
     <div class="feld"><label for="taktWahl">Takt (wie oft gibt es AP?)</label><select id="taktWahl"></select></div>
+    <div class="feld" id="uhrFeld"><label for="uhrWahl">Uhrzeit des Tageswechsels</label><select id="uhrWahl"></select></div>
+    <p class="leise" style="font-size:13px;margin:0 0 10px">Eine Schlacht dauert bei einem Takt pro Tag etwa drei Wochen: Die erste Woche bleibt der Sturm ruhig, an Tag 5 erwacht der Titan.</p>
     <div class="reihe"><button id="btnBot">+ Bot-Panzer</button><button class="haupt" id="btnStart">⚔️ Schlacht beginnen</button></div>
   </div>
   <p class="leise" id="wartet">Warte auf den Gastgeber …</p>
@@ -163,6 +168,9 @@ h1, h2, h3 { margin: 0; }
 </section>
 
 <!-- ============ SPIEL ============ -->
+<dialog id="rueckblick" class="rueck"><h2>Während du weg warst …</h2><div class="inhalt"></div>
+  <form method="dialog"><button class="haupt" style="width:100%;margin-top:12px">Zurück aufs Schlachtfeld</button></form></dialog>
+
 <section id="spiel" class="versteckt">
   <div id="feldBox">
     <canvas id="feld"></canvas>
@@ -255,13 +263,30 @@ function neuerStand(s) {
   $('#start').classList.add('versteckt');
   if (s.status === 'lobby') { $('#lobby').classList.remove('versteckt'); $('#spiel').classList.add('versteckt'); lobbyZeigen(); return; }
   $('#lobby').classList.add('versteckt'); $('#spiel').classList.remove('versteckt');
-  if (!vorher || vorher.status === 'lobby') { letzteLog = Math.max(0, (s.chronik.at(-1)?.n || 0) - 1); groesseAnpassen(); if (stand.groesse > 15 && Math.min(breite, hoehe) < 600) kam.zoom = 1.8; kameraZentrieren(); }
+  if (!vorher || vorher.status === 'lobby') { rueckblick(s); letzteLog = Math.max(0, (s.chronik.at(-1)?.n || 0) - 1); groesseAnpassen(); if (stand.groesse > 15 && Math.min(breite, hoehe) < 600) kam.zoom = 1.8; kameraZentrieren(); }
   effekteAusChronik(s);
   const neuChat = s.chat.at(-1)?.t || 0;
   if (neuChat > letzterChat && tab !== 'chat' && letzterChat) ungelesen.chat = true;
   letzterChat = neuChat;
   kopfZeigen(); steuerZeigen(); seiteZeigen();
 }
+
+/* ================= RÜCKBLICK =================
+   Die Schlacht läuft tagelang weiter, auch wenn man nicht reinschaut. Beim Öffnen zeigt
+   ein Fenster alles Wichtige, was seit dem letzten Besuch passiert ist. */
+function rueckblick(s) {
+  const gesehen = speicher.lies('gesehen') || {}, alt = gesehen[s.code];
+  const neu = s.chronik.filter(c => alt !== undefined && c.n > alt && c.art !== 'takt' && (!c.privat || c.privat.includes(s.ich.id)));
+  if (neu.length) {
+    const ich = s.spieler.find(p => p.id === s.ich.id);
+    const box = $('#rueckblick');
+    box.querySelector('.inhalt').innerHTML = `<p class="leise">${ich.lebt ? `Du hast jetzt <b style="color:var(--gold)">${ich.ap} AP</b> und ${'❤️'.repeat(ich.herzen)}${'🛡️'.repeat(ich.ruestung)}.` : 'Du bist gefallen – im Geisterrat kannst du weiter mitmischen.'}</p>
+      <div class="chronik">${neu.slice(-40).reverse().map(c => `<div class="${c.art}">${esc(c.text)}</div>`).join('')}</div>`;
+    box.showModal();
+  }
+  gesehen[s.code] = s.chronik.at(-1)?.n || 0; speicher.schreib('gesehen', gesehen);
+}
+setInterval(() => { if (stand && stand.status !== 'lobby') { const g = speicher.lies('gesehen') || {}; g[stand.code] = stand.chronik.at(-1)?.n || 0; speicher.schreib('gesehen', g); } }, 5000);
 
 /* ================= LOBBY ================= */
 function lobbyZeigen() {
@@ -277,10 +302,13 @@ function lobbyZeigen() {
   gewaehlteKlasse = ich.klasse;
   klassenKnopfe($('#klassenwahl2'), () => lobbyAendern({ klasse: gewaehlteKlasse }));
   $('#hostBox').classList.toggle('versteckt', !host); $('#wartet').classList.toggle('versteckt', host);
-  $('#taktWahl').innerHTML = Object.entries(INFO.takte).map(([m, t]) => `<option value="${m}" ${+m === s.taktMin ? 'selected' : ''}>${t}</option>`).join('');
+  $('#taktWahl').innerHTML = Object.entries(INFO.takte).sort((a, b) => b[0] - a[0]).map(([m, t]) => `<option value="${m}" ${+m === s.taktMin ? 'selected' : ''}>${t}</option>`).join('');
+  $('#uhrFeld').classList.toggle('versteckt', s.taktMin < 720);
+  $('#uhrWahl').innerHTML = [...Array(24)].map((_, h) => `<option value="${h}" ${h === s.uhrzeit ? 'selected' : ''}>${h}:00 Uhr${s.taktMin === 720 ? ` und ${(h + 12) % 24}:00 Uhr` : ''}</option>`).join('');
 }
 async function lobbyAendern(d) { try { neuerStand(await post('lobby', d)); } catch (e) { $('#lobbyFehler').textContent = e.message; } }
 $('#taktWahl').onchange = () => lobbyAendern({ taktMin: $('#taktWahl').value });
+$('#uhrWahl').onchange = () => lobbyAendern({ uhrzeit: $('#uhrWahl').value });
 $('#btnBot').onclick = () => lobbyAendern({ botDazu: true });
 $('#btnStart').onclick = async () => { try { neuerStand(await post('starten')); } catch (e) { $('#lobbyFehler').textContent = e.message; } };
 $('#btnLink').onclick = () => { navigator.clipboard?.writeText(location.origin + '/?code=' + stand.code); $('#btnLink').textContent = 'Kopiert!'; };
@@ -292,7 +320,10 @@ const feldAt = (x, y) => (x < 0 || y < 0 || x >= stand.groesse || y >= stand.gro
 const imSturm = (x, y) => { const m = (stand.groesse - 1) / 2; return Math.max(Math.abs(x - m), Math.abs(y - m)) > stand.sturmRadius; };
 const inPakt = (a, b) => stand.pakte.some(p => p.mitglieder.includes(a) && p.mitglieder.includes(b));
 function reichweite(p) { return p.reichweite + (feldAt(p.x, p.y) === 'B' ? 1 : 0) - (stand.ereignis === 'nebel' ? 1 : 0); }
-function zeitText(ms) { ms = Math.max(0, ms); const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h} h ${m} min` : m ? `${m}:${String(s % 60).padStart(2, '0')}` : `${s % 60} s`; }
+function zeitText(ms) { ms = Math.max(0, ms); const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return d ? `${d} T ${h} h` : h ? `${h} h ${m} min` : m ? `${m}:${String(s % 60).padStart(2, '0')}` : `${s % 60} s`; }
+const taktWort = () => stand.taktMin >= 720 ? 'Tag' : 'Takt';
+const uhrzeitText = t => new Date(t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
 async function tun(d) {
   try { neuerStand(await post('aktion', d)); modus = null; hinweis(''); popupZu(); }
@@ -311,10 +342,11 @@ function kopfZeigen() {
   const ev = { blutmond: '🌕 Blutmond', nebel: '🌫️ Nebel', nachschub: '🪂 Luftbrücke', beben: '🌍 Beben' }[stand.ereignis];
   $('#kopf').innerHTML = `
     ${ich.lebt ? `<span class="chip ap">⚡ ${ich.ap} AP</span><span class="chip">${'❤️'.repeat(ich.herzen)}${'🛡️'.repeat(ich.ruestung)}</span>` : '<span class="chip" style="color:var(--geist)">👻 Du bist ein Geist</span>'}
-    <span class="chip">Takt ${stand.takt} · nächster in <span id="uhr"></span></span>
+    <span class="chip" title="Nächster AP um ${uhrzeitText(stand.naechsterTakt)} Uhr">${taktWort()} ${stand.takt} · nächster AP in <span id="uhr"></span></span>
+    ${stand.takt < stand.sturmStart ? `<span class="chip leise">🌪️ Sturm ab ${taktWort()} ${stand.sturmStart}</span>` : ''}
     <span class="chip">🛡️ ${lebende} übrig</span>
     ${ev ? `<span class="chip ev">${ev}</span>` : ''}
-    ${stand.titan && stand.titan.hp > 0 ? `<span class="chip" style="color:var(--glut)">🔥 Titan ${stand.titan.hp}/${stand.titan.max}</span>` : (!stand.titan ? `<span class="chip leise">Titan in ${Math.max(0, stand.titanTakt - stand.takt)} Takten</span>` : '')}`;
+    ${stand.titan && stand.titan.hp > 0 ? `<span class="chip" style="color:var(--glut)">🔥 Titan ${stand.titan.hp}/${stand.titan.max}</span>` : (!stand.titan ? `<span class="chip leise">🔥 Titan erwacht ${taktWort() === 'Tag' ? 'an' : 'in'} ${taktWort()} ${stand.titanTakt}</span>` : '')}`;
   uhr();
 }
 function uhr() { const u = $('#uhr'); if (u && stand) u.textContent = stand.status === 'vorbei' ? '–' : zeitText(stand.naechsterTakt - Date.now() - (stand.jetzt - Date.now() > 0 ? 0 : 0)); }
@@ -380,7 +412,7 @@ function seiteZeigen(erzwingen) {
   }
   if (tab === 'rat') {
     const ich = ICH(), geister = stand.spieler.filter(p => !p.lebt);
-    if (ich.lebt) { box.innerHTML = `<div class="geisterrat"><p>Die Gefallenen beobachten dich. Jeden Takt segnen (+1 AP) oder verfluchen (−1 AP) sie einen Lebenden mit Mehrheit.</p>
+    if (ich.lebt) { box.innerHTML = `<div class="geisterrat"><p>Die Gefallenen beobachten dich. Jeden Tag segnen (+1 AP) oder verfluchen (−1 AP) sie einen Lebenden mit Mehrheit.</p>
       <p class="leise">Im Rat: ${geister.length ? geister.map(g => esc(g.name)).join(', ') : 'noch niemand'}</p><p class="leise">Tipp: Sei nett zu den Geistern im Funk.</p></div>`; return; }
     const lebende = stand.spieler.filter(p => p.lebt), st = stand.ich.stimme;
     box.innerHTML = `<div class="geisterrat"><p>👻 Du bist gefallen, aber nicht vergessen. Wähle für diesen Takt <b>einen</b> Lebenden:</p>
