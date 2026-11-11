@@ -1,7 +1,9 @@
 # Panzerpakt
 
+**Spielen: https://panzerpakt.onrender.com**
+
 Rundenbasierte Panzerschlacht für bis zu 12 Spieler, Teil der Swimming-Lions-Spielesammlung.
-Eine Schlacht läuft über Wochen: Jeden Tag zu einer festen Uhrzeit bekommt jeder Panzer einen Aktionspunkt: fahren, schießen, aufrüsten, AP verschenken
+Jeden Takt bekommt jeder Panzer einen Aktionspunkt – von der Blitz-Schlacht (jede Minute) bis zur Wochen-Schlacht (einmal am Tag zur festen Uhrzeit): fahren, schießen, aufrüsten, AP verschenken
 oder die Fähigkeit seiner Klasse nutzen. Dazu Pakte und Verrat, ein schrumpfender Sturm,
 der Titan und der Geisterrat der Gefallenen.
 

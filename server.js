@@ -34,8 +34,9 @@ const KLASSEN = {
 };
 const FARBEN = ['#e8483f', '#3fa7e8', '#f2c230', '#5ad16a', '#b46cf0', '#f08a3c', '#3fe0c8', '#f06cb4',
   '#9aa6b2', '#c9e84a', '#6c7bf0', '#e8e8e8'];
-// Panzerpakt ist auf lange Schlachten über Tage und Wochen ausgelegt. Die kurzen Takte sind nur zum Ausprobieren.
-const TAKTE = { 1440: 'Einmal am Tag (empfohlen)', 720: 'Zweimal am Tag', 360: 'Alle 6 Stunden', 60: 'Jede Stunde', 5: 'Alle 5 Minuten (Probespiel)' };
+// Wie schnell eine Schlacht läuft, wählt der Gastgeber: von der Blitz-Schlacht (eine Minute pro Takt) bis zur Wochen-Schlacht (ein Takt pro Tag).
+const TAKTE = { 1440: 'Einmal am Tag – Wochen-Schlacht', 720: 'Zweimal am Tag', 360: 'Alle 6 Stunden', 180: 'Alle 3 Stunden',
+  60: 'Jede Stunde – Tages-Schlacht', 30: 'Alle 30 Minuten', 15: 'Alle 15 Minuten', 5: 'Alle 5 Minuten – Abend-Schlacht', 2: 'Alle 2 Minuten', 1: 'Jede Minute – Blitz-Schlacht' };
 const STANDARD_TAKT = 1440, STANDARD_UHRZEIT = 18;
 
 /* Nächster Zeitpunkt, an dem in Deutschland die volle Stunde `stunde` schlägt (beachtet Sommer- und Winterzeit). */
